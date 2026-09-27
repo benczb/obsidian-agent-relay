@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.env
+*.tmp
+secrets/
+data/
+compose.gx10.yaml
+__pycache__/
+
+# Runtime credentials and host-specific Compose overrides
+*.env
+*.env.*
+*.override.yaml
+*.override.yml
+board-migration.*.yaml
+board-migration.*.yml

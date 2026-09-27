@@ -1,0 +1,28 @@
+# REST facade for Meta Muse (custom connector). Separate compose project from
+# the MCP server so `docker compose up` on the MCP stack stays unchanged.
+# Run from the repo root: docker compose -f rest-facade/compose.yaml up -d --build
+services:
+  obsidian-kanban-rest:
+    build:
+      context: ..
+    restart: unless-stopped
+    command: ["node", "dist/src/rest-facade.js"]
+    environment:
+      # Must match the MCP service exactly so both edit one board file.
+      KANBAN_BOARD_PATH: /vault/Hermes Board.md
+      OBSIDIAN_VAULT_PATH: /vault
+      OBSIDIAN_ATTACHMENTS_FOLDER: ${OBSIDIAN_ATTACHMENTS_FOLDER:-Attachments}
+      REST_BEARER_TOKEN: ${REST_BEARER_TOKEN:?set REST_BEARER_TOKEN in rest-facade/.env}
+      OPENAPI_SPEC_PATH: /app/openapi.yaml
+      HOST: 0.0.0.0
+      PORT: 8788
+    volumes:
+      - ${OBSIDIAN_VAULT_PATH:?set OBSIDIAN_VAULT_PATH in rest-facade/.env}:/vault
+      - ./openapi.yaml:/app/openapi.yaml:ro
+    ports:
+      - "127.0.0.1:${REST_BIND_PORT:-8788}:8788"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true

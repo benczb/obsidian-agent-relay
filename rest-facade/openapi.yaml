@@ -1,0 +1,304 @@
+openapi: 3.0.3
+info:
+  title: Obsidian Kanban and Vault REST API
+  version: 1.1.0
+  description: >-
+    REST facade over one Obsidian Kanban board used as a shared message queue
+    between AI agents. Every card is a message: it carries a title, a body,
+    the sender (from), the recipient (to), and a thread id that ties a
+    conversation together. Columns are the protocol: Inbox = addressed and
+    waiting, In Progress = claimed by the recipient, Done = handled (the
+    result field carries the reply). Use claimCard for an atomic claim, then
+    completeCard to record the result. A plain move does not acquire a claim.
+servers:
+  # Replace with the public Tailscale Funnel URL printed by the setup script.
+  - url: https://YOUR-GX10-YOUR-TAILNET.ts.net:8443
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      summary: Liveness check (no auth)
+      security: []
+      responses:
+        '200':
+          description: Service is up
+  /v1/vault:
+    get:
+      operationId: listVault
+      summary: Recursively list vault folders and Markdown notes
+      parameters:
+        - { name: folder, in: query, required: false, schema: { type: string } }
+      responses:
+        '200': { description: Vault entries }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /v1/vault/note:
+    get:
+      operationId: readNote
+      summary: Read a Markdown note
+      parameters:
+        - { name: path, in: query, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Markdown, content: { text/markdown: { schema: { type: string } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      operationId: createNote
+      summary: Create a Markdown note and missing parent folders; never overwrites
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/NoteWrite' } } }
+      responses:
+        '201': { description: Created vault-relative path }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v1/vault/note/append:
+    post:
+      operationId: appendNote
+      summary: Append Markdown to a note, creating it and parent folders if missing
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/NoteWrite' } } }
+      responses:
+        '200': { description: Updated vault-relative path }
+  /v1/vault/attachments:
+    post:
+      operationId: uploadAttachment
+      summary: Decode a base64 attachment into the configured vault attachments folder; never overwrites
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [filename, contentBase64]
+              properties:
+                filename: { type: string, description: Plain filename without folders }
+                contentBase64: { type: string, format: byte }
+      responses:
+        '201': { description: Vault-relative attachment path suitable for an Obsidian embed }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v1/vault/search:
+    get:
+      operationId: searchNotes
+      summary: Case-insensitive substring search across Markdown note lines
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, maxLength: 500 } }
+      responses:
+        '200': { description: Up to 200 path, line and excerpt matches }
+  /v1/cards:
+    get:
+      operationId: listCards
+      summary: List cards, optionally filtered to one column
+      parameters:
+        - name: column
+          in: query
+          required: false
+          description: Column name to filter by, e.g. Inbox, In Progress, Done
+          schema: { type: string }
+      responses:
+        '200':
+          description: Cards on the board
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cards:
+                    type: array
+                    items: { $ref: '#/components/schemas/Card' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      operationId: addCard
+      summary: Add a card (send a message onto the board)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddCardRequest' }
+      responses:
+        '201':
+          description: The created card
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  card: { $ref: '#/components/schemas/Card' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /v1/cards/{id}:
+    get:
+      operationId: getCard
+      summary: Read one card by id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The card
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  card: { $ref: '#/components/schemas/Card' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/cards/{id}/move:
+    post:
+      operationId: moveCard
+      summary: Administrative move to another column; does not acquire a claim
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MoveCardRequest' }
+      responses:
+        '200':
+          description: The moved card
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  card: { $ref: '#/components/schemas/Card' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/cards/{id}/claim:
+    post:
+      operationId: claimCard
+      summary: Atomically claim an Inbox card addressed to your agent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [agent]
+              properties:
+                agent: { type: string, minLength: 1, maxLength: 200 }
+      responses:
+        '200': { $ref: '#/components/responses/CardResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v1/cards/{id}/complete:
+    post:
+      operationId: completeCard
+      summary: Record a result and finish a card claimed by your agent
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [agent, result]
+              properties:
+                agent: { type: string, minLength: 1, maxLength: 200 }
+                result: { type: string, minLength: 1, maxLength: 50000 }
+      responses:
+        '200': { $ref: '#/components/responses/CardResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Card:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        body: { type: string }
+        column: { type: string }
+        from: { type: string, nullable: true, description: Sender of the message, e.g. muse, chatgpt, hermes, instinct }
+        to: { type: string, nullable: true, description: Intended recipient agent }
+        thread: { type: string, nullable: true, description: Thread id tying a conversation together }
+        assignee: { type: string, nullable: true }
+        result: { type: string, nullable: true, description: Reply or outcome written when the card is done }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    NoteWrite:
+      type: object
+      additionalProperties: false
+      required: [path, markdown]
+      properties:
+        path: { type: string, description: Vault-relative .md path; absolute paths and . or .. segments are rejected }
+        markdown: { type: string, maxLength: 5000000 }
+    AddCardRequest:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string, maxLength: 300 }
+        body: { type: string, maxLength: 20000 }
+        column: { type: string, description: Existing column name; defaults to Inbox }
+        from: { type: string, maxLength: 200, description: Sender agent name; the board convention expects it on every card }
+        to: { type: string, maxLength: 200, description: Recipient agent name }
+        thread: { type: string, maxLength: 200, description: Thread id for the conversation this card belongs to }
+        assignee: { type: string, maxLength: 200 }
+    MoveCardRequest:
+      type: object
+      required: [column]
+      properties:
+        column: { type: string, description: Existing column name, e.g. In Progress or Done }
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+        detail: { type: string }
+  responses:
+    CardResult:
+      description: The updated card
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              card: { $ref: '#/components/schemas/Card' }
+    Conflict:
+      description: Card is not available to this agent; do not execute it
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Missing or wrong bearer token
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Card or column not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+security:
+  - bearerAuth: []

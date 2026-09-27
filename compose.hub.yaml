@@ -1,0 +1,45 @@
+# Unified deployment. Run ./deploy.sh; credentials and OAuth state stay outside the vault.
+name: obsidian-kanban
+services:
+  mcp:
+    build: .
+    restart: unless-stopped
+    environment:
+      KANBAN_BOARD_PATH: /vault/Hermes Board.md
+      MCP_BEARER_TOKEN: ${MCP_BEARER_TOKEN:?required}
+      HOST: 0.0.0.0
+      PORT: 8787
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?required}
+      OAUTH_HOST: 0.0.0.0
+      OAUTH_PORT: 8771
+      OAUTH_OWNER_TOKEN_FILE: /run/secrets/oauth-owner-token
+      OAUTH_STATE_DIR: /oauth-state
+      OAUTH_ALLOWED_REDIRECT_HOSTS: ${OAUTH_ALLOWED_REDIRECT_HOSTS:-chatgpt.com}
+    volumes:
+      - ${OBSIDIAN_VAULT_PATH:?required}:/vault
+      - ${KANBAN_RUNTIME_PATH:?required}/oauth:/oauth-state
+      - ${KANBAN_RUNTIME_PATH:?required}/oauth-owner-token:/run/secrets/oauth-owner-token:ro
+    ports:
+      - "127.0.0.1:${MCP_BIND_PORT:-18787}:8787"
+      - "127.0.0.1:${OAUTH_BIND_PORT:-8771}:8771"
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]
+  rest:
+    build: .
+    restart: unless-stopped
+    command: [node, dist/src/rest-facade.js]
+    environment:
+      KANBAN_BOARD_PATH: /vault/Hermes Board.md
+      REST_BEARER_TOKEN: ${REST_BEARER_TOKEN:?required}
+      OPENAPI_SPEC_PATH: /app/openapi.yaml
+      HOST: 0.0.0.0
+      PORT: 8788
+    volumes:
+      - ${OBSIDIAN_VAULT_PATH:?required}:/vault
+      - ${KANBAN_RUNTIME_PATH:?required}/openapi.yaml:/app/openapi.yaml:ro
+    ports:
+      - "127.0.0.1:${REST_BIND_PORT:-18788}:8788"
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: [no-new-privileges:true]

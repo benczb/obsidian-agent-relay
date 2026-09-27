@@ -1,0 +1,16 @@
+[Unit]
+Description=Obsidian Kanban REST facade (Meta Muse custom connector)
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Adjust if the repo was cloned somewhere other than ~/obsidian-hermes-mcp.
+WorkingDirectory=%h/obsidian-hermes-mcp
+ExecStart=/usr/bin/docker compose -f rest-facade/compose.yaml up -d
+ExecStop=/usr/bin/docker compose -f rest-facade/compose.yaml down
+TimeoutStartSec=0
+
+[Install]
+WantedBy=default.target

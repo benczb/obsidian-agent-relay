@@ -1,0 +1,18 @@
+services:
+  obsidian-kanban-mcp:
+    build: .
+    restart: unless-stopped
+    environment:
+      KANBAN_BOARD_PATH: /vault/Hermes Board.md
+      MCP_BEARER_TOKEN: ${MCP_BEARER_TOKEN:?set MCP_BEARER_TOKEN in .env}
+      HOST: 0.0.0.0
+      PORT: 8787
+    volumes:
+      - ${OBSIDIAN_VAULT_PATH:?set OBSIDIAN_VAULT_PATH in .env}:/vault
+    ports:
+      - "127.0.0.1:${MCP_BIND_PORT:-8787}:8787"
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true

@@ -1,0 +1,28 @@
+{
+  "name": "obsidian-kanban-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Board-scoped MCP server for a shared ChatGPT and Hermes instruction queue",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/src/index.js",
+    "dev": "tsx src/index.ts",
+    "test": "node --import tsx --test test/*.test.ts",
+    "check": "npm run build && npm test"
+  },
+  "engines": { "node": ">=20.11" },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "express": "5.2.1",
+    "proper-lockfile": "4.1.2",
+    "zod": "4.6.1"
+  },
+  "devDependencies": {
+    "@types/express": "5.0.5",
+    "@types/node": "24.3.1",
+    "@types/proper-lockfile": "4.1.4",
+    "tsx": "4.20.5",
+    "typescript": "5.9.2"
+  }
+}
