@@ -36,6 +36,7 @@ function consentResponse(owner_token: string): { response: Response; redirect: (
   const response = {
     req: { method: "POST", body: { owner_token } },
     redirect: (_status: number, value: string) => { location = value; },
+    set: () => response,
     status: () => response,
     type: () => response,
     send: () => response,
@@ -109,6 +110,18 @@ test("does not let one public client revoke another client's token", async () =>
   await provider.verifyAccessToken(tokens.access_token);
   await provider.revokeToken(client, { token: tokens.access_token });
   await assert.rejects(provider.verifyAccessToken(tokens.access_token), /Invalid or expired access token/);
+});
+
+test("persisted access tokens cannot cross a configured resource change", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "kanban-oauth-"));
+  const provider = providerAt(dir);
+  const client = await register(provider);
+  const consent = consentResponse(ownerToken);
+  await provider.authorize(client, { codeChallenge: "challenge", redirectUri: client.redirect_uris[0], scopes: ["mcp"], resource }, consent.response);
+  const code = new URL(consent.redirect()!).searchParams.get("code")!;
+  const tokens = await provider.exchangeAuthorizationCode(client, code, undefined, client.redirect_uris[0], resource);
+  const changed = new SingleUserOAuthProvider({ ownerToken, accessTokenTtlSeconds: 3600, refreshTokenTtlSeconds: 86400, scopes: ["mcp"], allowedRedirectHosts: ["chatgpt.com"] }, new URL("https://different.example.test/mcp"), dir);
+  await assert.rejects(changed.verifyAccessToken(tokens.access_token), /Invalid or expired access token/);
 });
 
 test("requires the exact configured resource", async () => {

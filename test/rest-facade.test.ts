@@ -39,6 +39,15 @@ test("vault REST note round-trip, listing, append and search", async () => {
   } finally { await f.close(); }
 });
 
+test("REST authenticates before parsing attacker-controlled JSON", async () => {
+  const f = await fixture();
+  try {
+    const response = await fetch(`${f.base}/v1/cards`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{" });
+    assert.equal(response.status, 401);
+    assert.deepEqual(await response.json(), { error: "unauthorized" });
+  } finally { await f.close(); }
+});
+
 test("vault REST attachment upload and path safety", async () => {
   const f = await fixture();
   try {

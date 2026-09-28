@@ -1,0 +1,9 @@
+# Send only build inputs, never local credentials, vaults or Git history.
+**
+!Dockerfile
+!.dockerignore
+!package.json
+!package-lock.json
+!tsconfig.json
+!src/
+!src/**

@@ -51,6 +51,14 @@ test("cards without messaging fields keep parsing as before", async () => {
   assert.equal((await board.get(added.id)).thread, undefined);
 });
 
+test("concurrent first writers initialise a board without losing cards", async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "kanban-race-"));
+  const file = path.join(dir, "board.md");
+  const results = await Promise.allSettled(Array.from({ length: 8 }, (_, i) => new KanbanBoard(file).add({ title: `Card ${i}` })));
+  assert.equal(results.filter(r => r.status === "fulfilled").length, 8, JSON.stringify(results));
+  assert.equal((await new KanbanBoard(file).list()).length, 8);
+});
+
 test("oversized messaging fields are rejected", async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "kanban-"));
   const board = new KanbanBoard(path.join(dir, "board.md"));

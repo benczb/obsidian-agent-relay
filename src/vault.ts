@@ -46,7 +46,11 @@ export class VaultStore {
       } catch (error: any) {
         if (error?.code !== "ENOENT") throw error;
         if (!createParents) break;
-        await mkdir(current);
+        try { await mkdir(current); }
+        catch (mkdirError: any) { if (mkdirError?.code !== "EEXIST") throw mkdirError; }
+        // Another request may have created it. Never accept a symlink or file.
+        const created = await lstat(current);
+        if (created.isSymbolicLink() || !created.isDirectory()) throw new VaultPathError("Path parent must be a real directory inside the vault");
       }
     }
     const absolute = path.join(this.root, ...parts);

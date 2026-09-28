@@ -25,9 +25,14 @@ const COLUMN_RE = /^##\s+(.+?)\s*$/;
 function encode(meta: Meta): string {
   return Buffer.from(JSON.stringify(meta)).toString("base64url");
 }
-function decode(value: string): Meta | undefined {
-  try { return JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as Meta; }
-  catch { return undefined; }
+function decode(value: string, id: string): Meta {
+  try {
+    const meta = JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
+    if (!meta || typeof meta !== "object" || Array.isArray(meta) || meta.id !== id ||
+      !["description", "createdAt", "updatedAt"].every(key => typeof meta[key] === "string") ||
+      !["result", "assignee", "from", "to", "thread"].every(key => meta[key] === undefined || typeof meta[key] === "string")) throw new Error();
+    return meta as Meta;
+  } catch { throw new Error(`Invalid task metadata for '${id}'; repair the board before editing`); }
 }
 function cleanOneLine(value: string, label: string): string {
   const out = value.replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim();
@@ -61,47 +66,61 @@ export class KanbanBoard {
   private async ensureFile(): Promise<void> {
     await mkdir(path.dirname(this.file), { recursive: true });
     try { await stat(this.file); }
-    catch { await writeFile(this.file, "---\nkanban-plugin: board\n---\n\n## Inbox\n\n## In Progress\n\n## Done\n\n", { flag: "wx" }); }
+    catch (error: any) {
+      if (error?.code !== "ENOENT") throw error;
+      await writeFile(this.file, "---\nkanban-plugin: board\n---\n\n## Inbox\n\n## In Progress\n\n## Done\n\n", { flag: "wx", mode: 0o600 });
+    }
   }
 
-  private parse(text: string): { lines: string[]; columns: Map<string, number>; tasks: Task[]; ranges: Map<string, [number, number]> } {
+  private parse(text: string): { lines: string[]; columns: Map<string, number>; tasks: Task[]; ranges: Map<string, [number, number]>; end: number } {
     const lines = text.replace(/\r\n/g, "\n").split("\n");
     const columns = new Map<string, number>();
     const tasks: Task[] = [];
     const ranges = new Map<string, [number, number]>();
     let column = "";
-    for (let i = 0; i < lines.length; i++) {
+    const settings = lines.findIndex(line => /^%%\s*kanban:settings\b/.test(line));
+    const end = settings < 0 ? lines.length : settings;
+    for (let i = 0; i < end; i++) {
       const heading = lines[i].match(COLUMN_RE);
       if (heading) { column = heading[1].trim(); columns.set(column.toLowerCase(), i); continue; }
       const card = lines[i].match(TASK_RE);
       if (!card || !column) continue;
       const id = card[3];
+      if (ranges.has(id)) throw new Error(`Duplicate task ID '${id}'; repair the board before editing`);
       const metaMatch = lines[i + 1]?.match(META_RE);
-      const meta = metaMatch?.[1] === id ? decode(metaMatch[2]) : undefined;
+      if (lines[i + 1]?.startsWith("<!-- hermes-meta:") && (!metaMatch || metaMatch[1] !== id)) {
+        throw new Error(`Invalid task metadata for '${id}'; repair the board before editing`);
+      }
+      const meta = metaMatch?.[1] === id ? decode(metaMatch[2], id) : undefined;
       const now = new Date(0).toISOString();
       tasks.push({ id, title: card[2].trim(), column, description: meta?.description ?? "", createdAt: meta?.createdAt ?? now, updatedAt: meta?.updatedAt ?? now, result: meta?.result, assignee: meta?.assignee, from: meta?.from, to: meta?.to, thread: meta?.thread });
       ranges.set(id, [i, metaMatch?.[1] === id ? i + 1 : i]);
       if (metaMatch?.[1] === id) i++;
     }
-    return { lines, columns, tasks, ranges };
+    return { lines, columns, tasks, ranges, end };
+  }
+
+  private async withLock<T>(fn: () => Promise<T>): Promise<T> {
+    await mkdir(path.dirname(this.file), { recursive: true });
+    // Lock the pathname before initialisation, including when the file is absent.
+    const release = await lockfile.lock(this.file, { realpath: false, retries: { retries: 8, minTimeout: 25, maxTimeout: 300 }, stale: 10_000 });
+    try { await this.ensureFile(); return await fn(); }
+    finally { await release(); }
   }
 
   private async withWrite<T>(fn: (text: string) => Promise<{ value: T; text: string }>): Promise<T> {
-    await this.ensureFile();
-    const release = await lockfile.lock(this.file, { retries: { retries: 8, minTimeout: 25, maxTimeout: 300 }, stale: 10_000 });
-    try {
+    return this.withLock(async () => {
       const current = await readFile(this.file, "utf8");
       const { value, text } = await fn(current);
       const tmp = `${this.file}.${process.pid}.${randomUUID()}.tmp`;
       await writeFile(tmp, text.endsWith("\n") ? text : `${text}\n`, { mode: 0o600 });
       await rename(tmp, this.file);
       return value;
-    } finally { await release(); }
+    });
   }
 
   async list(column?: string): Promise<Task[]> {
-    await this.ensureFile();
-    const tasks = this.parse(await readFile(this.file, "utf8")).tasks;
+    const tasks = await this.withLock(async () => this.parse(await readFile(this.file, "utf8")).tasks);
     return column ? tasks.filter(t => t.column.toLowerCase() === column.toLowerCase()) : tasks;
   }
   async get(id: string): Promise<Task> {
@@ -118,8 +137,8 @@ export class KanbanBoard {
       const column = parsed.lines[heading].match(COLUMN_RE)![1].trim();
       const now = new Date().toISOString();
       const task: Task = { id: randomUUID(), title: cleanOneLine(input.title, "title"), description: input.description?.trim() ?? "", column, createdAt: now, updatedAt: now, assignee: input.assignee?.trim() || undefined, from: cleanOptional(input.from, "from"), to: cleanOptional(input.to, "to"), thread: cleanOptional(input.thread, "thread") };
-      let at = parsed.lines.length;
-      for (let i = heading + 1; i < parsed.lines.length; i++) if (COLUMN_RE.test(parsed.lines[i])) { at = i; break; }
+      let at = parsed.end;
+      for (let i = heading + 1; i < parsed.end; i++) if (COLUMN_RE.test(parsed.lines[i])) { at = i; break; }
       parsed.lines.splice(at, 0, ...render(task), "");
       return { value: task, text: parsed.lines.join("\n") };
     });
@@ -166,8 +185,8 @@ export class KanbanBoard {
       if (operation.kind === "complete") task.result = operation.result;
       parsed.lines.splice(range[0], range[1] - range[0] + 1);
       const reparsed = this.parse(parsed.lines.join("\n")); const newHeading = reparsed.columns.get(target.toLowerCase())!;
-      let at = parsed.lines.length;
-      for (let i = newHeading + 1; i < parsed.lines.length; i++) if (COLUMN_RE.test(parsed.lines[i])) { at = i; break; }
+      let at = reparsed.end;
+      for (let i = newHeading + 1; i < reparsed.end; i++) if (COLUMN_RE.test(parsed.lines[i])) { at = i; break; }
       parsed.lines.splice(at, 0, ...render(task), "");
       return { value: task, text: parsed.lines.join("\n") };
     });

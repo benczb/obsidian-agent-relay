@@ -250,6 +250,13 @@ export class SingleUserOAuthProvider implements OAuthServerProvider {
   }
 
   async authorize(client: OAuthClientInformationFull, params: AuthorizationParams, response: Response): Promise<void> {
+    response.set({
+      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",
+      "X-Frame-Options": "DENY",
+      "Referrer-Policy": "no-referrer",
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    });
     if (!exactResourceMatches(params.resource, this.resource)) throw new InvalidRequestError("Invalid or missing OAuth resource");
     if (!(params.scopes ?? []).every((scope) => this.config.scopes.includes(scope))) throw new InvalidRequestError("Requested scope is not supported");
     const normalizedParams = {
@@ -300,7 +307,7 @@ export class SingleUserOAuthProvider implements OAuthServerProvider {
 
   async verifyAccessToken(token: string) {
     const record = this.store.getAccessToken(tokenHash(token));
-    if (!record || record.expiresAt < Math.floor(Date.now() / 1000)) throw new InvalidTokenError("Invalid or expired access token");
+    if (!record || record.resource !== this.resource.href || record.expiresAt < Math.floor(Date.now() / 1000)) throw new InvalidTokenError("Invalid or expired access token");
     return { token, clientId: record.clientId, scopes: record.scopes, expiresAt: record.expiresAt, resource: new URL(record.resource) };
   }
 

@@ -55,7 +55,6 @@ export async function createRestApp(config: { boardPath: string; token: string; 
   const vault = await VaultStore.open(config.vaultPath, config.attachmentFolder);
   const app = express();
   app.disable("x-powered-by");
-  app.use(express.json({ limit: "12mb" }));
 
   app.get("/healthz", (_req, res) => res.json({ ok: true }));
 
@@ -72,6 +71,8 @@ export async function createRestApp(config: { boardPath: string; token: string; 
     if (a.length !== b.length || !timingSafeEqual(a, b)) return res.status(401).set("WWW-Authenticate", "Bearer").json({ error: "unauthorized" });
     next();
   });
+
+  app.use("/v1", express.json({ limit: "12mb" }));
 
   const notePathSchema = z.string().min(1).max(1000);
   const createNoteSchema = z.object({ path: notePathSchema, markdown: z.string().max(5_000_000) }).strict();

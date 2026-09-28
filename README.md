@@ -53,7 +53,8 @@ Run these from a checkout of this repo. Keep the checkout and runtime outside a 
 export KANBAN_RUNTIME_PATH="$HOME/.config/obsidian-kanban/runtime"
 mkdir -p "$KANBAN_RUNTIME_PATH/oauth" "$HOME/obsidian-relay-board" "$HOME/obsidian-relay-notes"
 # Docker runs as the unprivileged node user (UID 1000). Confirm it can write the
-# board directory and notes vault; adjust ownership on your own host if needed.
+# board, notes and runtime/oauth directories and read the owner-token file.
+# Adjust ownership on your own host if needed; do not make tokens world-readable.
 if [ ! -e "$HOME/obsidian-relay-board/Hermes Board.md" ]; then
   printf -- '---\nkanban-plugin: basic\n---\n\n## Inbox\n\n## In Progress\n\n## Done\n' > "$HOME/obsidian-relay-board/Hermes Board.md"
 fi

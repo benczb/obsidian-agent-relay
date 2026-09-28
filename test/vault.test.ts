@@ -39,6 +39,13 @@ test("rejects traversal, absolute paths and symlink escape", async () => {
   await assert.rejects(vault.createNote("linked/escape.md", "bad"), VaultPathError);
 });
 
+test("concurrent notes safely share newly created parent directories", async () => {
+  const { vault } = await fixture();
+  const results = await Promise.allSettled(Array.from({ length: 8 }, (_, i) => vault.createNote(`New/Folder/${i}.md`, `Note ${i}`)));
+  assert.equal(results.filter(r => r.status === "fulfilled").length, 8, JSON.stringify(results));
+  assert.equal((await vault.list()).filter(e => e.type === "note").length, 8);
+});
+
 test("create note is create-only while append can create a missing note", async () => {
   const { vault } = await fixture();
   await vault.createNote("existing.md", "one");
