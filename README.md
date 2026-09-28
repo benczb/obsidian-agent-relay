@@ -41,7 +41,7 @@ Claude can use an OAuth MCP endpoint if the host allowlists its actual redirect 
 
 ## Requirements
 
-- A host with Docker and the Compose plugin, `openssl`, and a dedicated board directory containing `Hermes Board.md` (the board name is fixed in `compose.hub.yaml`).
+- A host with Docker and the Compose plugin, `openssl`, a dedicated board directory, and a separate notes-vault directory. The board filename is `Hermes Board.md`.
 - A public HTTPS origin for cloud MCP clients and, if used, a separate HTTPS URL for REST clients. Tailscale Funnel is one option. Do not expose either private bearer listener.
 - An OAuth-capable MCP client, or a local MCP client that can supply the private bearer token. REST clients need bearer-header support.
 
@@ -50,12 +50,20 @@ Claude can use an OAuth MCP endpoint if the host allowlists its actual redirect 
 Run these from a checkout of this repo. Keep the checkout and runtime outside a synced vault. The runtime directory contains tokens and OAuth state; back it up securely, and never commit it.
 
 ```bash
-mkdir -p "$HOME/.config/obsidian-kanban/runtime/oauth"
 export KANBAN_RUNTIME_PATH="$HOME/.config/obsidian-kanban/runtime"
+mkdir -p "$KANBAN_RUNTIME_PATH/oauth" "$HOME/obsidian-relay-board" "$HOME/obsidian-relay-notes"
+# Docker runs as the unprivileged node user (UID 1000). Confirm it can write the
+# board directory and notes vault; adjust ownership on your own host if needed.
+if [ ! -e "$HOME/obsidian-relay-board/Hermes Board.md" ]; then
+  printf -- '---\nkanban-plugin: basic\n---\n\n## Inbox\n\n## In Progress\n\n## Done\n' > "$HOME/obsidian-relay-board/Hermes Board.md"
+fi
+# This is a fresh-install example only. On an existing board, never overwrite its file.
 cp deployment.env.example "$KANBAN_RUNTIME_PATH/deployment.env"
-# Edit deployment.env: absolute OBSIDIAN_VAULT_PATH, KANBAN_RUNTIME_PATH,
+# Edit deployment.env: absolute KANBAN_BOARD_DIR (the directory just created),
+# OBSIDIAN_VAULT_PATH (the separate notes directory), KANBAN_RUNTIME_PATH,
 # PUBLIC_BASE_URL (the public HTTPS OAuth origin, including any nonstandard port),
 # and OAUTH_ALLOWED_REDIRECT_HOSTS for your actual client's verified callback host.
+# Confirm the board and notes directories are distinct and writable by UID 1000.
 ${EDITOR:-vi} "$KANBAN_RUNTIME_PATH/deployment.env"
 # Replace MCP_BEARER_TOKEN and REST_BEARER_TOKEN in that file with two
 # different outputs of `openssl rand -hex 32`, before starting the services.
@@ -67,7 +75,13 @@ ${EDITOR:-vi} "$KANBAN_RUNTIME_PATH/openapi.yaml"
 chmod 600 "$KANBAN_RUNTIME_PATH/deployment.env"
 KANBAN_ENV_FILE="$KANBAN_RUNTIME_PATH/deployment.env" ./deploy.sh
 KANBAN_ENV_FILE="$KANBAN_RUNTIME_PATH/deployment.env" ./deploy.sh ps
+# Replace these ports if you changed MCP_BIND_PORT or REST_BIND_PORT.
+curl -fsS http://127.0.0.1:18787/healthz
+curl -fsS http://127.0.0.1:18788/healthz
+# If either fails, inspect: KANBAN_ENV_FILE="$KANBAN_RUNTIME_PATH/deployment.env" ./deploy.sh logs --tail=100 mcp rest
 ```
+
+The example uses three distinct absolute paths. Do not point `KANBAN_BOARD_DIR` into the notes vault or at the board file itself. The combined Compose file mounts the entire board directory at `/board` in both services (the board write lock and atomic rename need that directory writable) and mounts the notes directory only in REST at `/vault`. On SELinux hosts or Docker setups that create root-owned bind-mount targets, ensure the board directory and notes vault exist and are writable by container UID 1000 before deploy.
 
 In the env file, replace the two placeholder bearer tokens (`MCP_BEARER_TOKEN` and `REST_BEARER_TOKEN`) with separate outputs from `openssl rand -hex 32`. The OAuth owner token lives **only** in `oauth-owner-token`, not in the env file. `deploy.sh` refuses to run without an explicit `KANBAN_ENV_FILE`. Do not put the owner token in a card or client configuration.
 

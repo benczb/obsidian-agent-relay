@@ -41,12 +41,15 @@ with tempfile.TemporaryDirectory(prefix='kanban-adapters-') as temp:
     while rest == private:
         rest = free_port()
     mcp_url, rest_url = f'http://127.0.0.1:{private}', f'http://127.0.0.1:{rest}'
+    notes = Path(temp) / 'notes'
+    notes.mkdir()
     mcp_token, rest_token = secrets.token_hex(32), secrets.token_hex(32)
     processes = []
     try:
         for entry, port in [('index', private), ('rest-facade', rest)]:
             env = {'PATH': os.environ['PATH'], 'HOST': '127.0.0.1', 'PORT': str(port),
                    'KANBAN_BOARD_PATH': str(Path(temp) / 'board.md'),
+                   'OBSIDIAN_VAULT_PATH': str(notes),
                    'MCP_BEARER_TOKEN': mcp_token, 'REST_BEARER_TOKEN': rest_token}
             processes.append(subprocess.Popen(['node', f'dist/src/{entry}.js'], cwd=ROOT,
                                                env=env, stdout=subprocess.DEVNULL))
@@ -60,6 +63,7 @@ with tempfile.TemporaryDirectory(prefix='kanban-adapters-') as temp:
                 time.sleep(0.05)
             else:
                 raise AssertionError('service failed to start')
+        assert request(rest_url, '/v1/vault', rest_token) == (200, {'entries': []})
         assert request(rest_url, '/v1/cards')[0] == 401
         assert request(rest_url, '/v1/cards', mcp_token)[0] == 401
         assert request(mcp_url, '/mcp', rest_token, {})[0] == 401
@@ -90,7 +94,9 @@ with tempfile.TemporaryDirectory(prefix='kanban-adapters-') as temp:
         assert request(rest_url, f'/v1/cards/{card_id}/claim', rest_token, {'agent': 'muse'})[0] == 200
         assert request(rest_url, f'/v1/cards/{card_id}/complete', rest_token, {'agent': 'muse', 'result': 'REST evidence'})[0] == 200
         assert mcp('get_task', {'id': card_id})['result'] == 'REST evidence'
-        print('PASS: REST/MCP round trip, routing, claims, completion, auth separation; temporary board only')
+        assert request(rest_url, '/v1/vault/note', rest_token, {'path': 'Proof.md', 'markdown': '# Scratch'}) == (201, {'path': 'Proof.md'})
+        assert (notes / 'Proof.md').read_text() == '# Scratch'
+        print('PASS: REST/MCP round trip, routing, claims, completion, auth separation, vault note; temporary board and vault only')
     finally:
         for process in processes:
             process.terminate()

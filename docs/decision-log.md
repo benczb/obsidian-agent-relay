@@ -31,3 +31,15 @@ Added Claude as a planned MCP route and Tencent WorkBuddy with route to be decid
 ## Separate board and notes (2026-09-28)
 
 The board directory and notes vault were separated. The public-facing README now describes the architecture and leaves host-specific paths, private runtime overrides, backups and client test evidence to an operator runbook kept outside Git. Card identities and routes remain part of the handover contract, but names in a table do not assert live connections. These current-file edits do not remove earlier prompt logs or operational details from Git history; review and, if needed, rewrite history before making the repository public.
+
+## Fix the public quick start (2026-09-28)
+
+Prompt (verbatim): "asked claude to eval it to see what my obsidian setup can use.. just sharing one point it flagged fyi
+
+Setup: it's broken as shipped. A file the instructions tell you to copy isn't in the repo, and the vault service crashes on startup (I tested it)."
+
+Prompt (verbatim): "Feedback for the public repo"
+
+Prompt (verbatim): "Fix it"
+
+Decision: add sanitized, tracked deployment templates and correct the combined and standalone Compose wiring. MCP and REST now mount the same board directory, whose lockfile and atomic rename require a writable directory mount; REST alone mounts a separate notes vault and receives its required `OBSIDIAN_VAULT_PATH`. The README creates a fresh board without overwriting an existing file and includes health checks. The Python adapter smoke test now supplies a separate notes root and proves REST note writes as well as the board round trip. No host-specific values or runtime tokens are committed. Docker was unavailable in the test workspace: Node entry-point health, REST/MCP round trip, Compose static wiring and unit tests passed, but container startup remains for a Docker host to verify.

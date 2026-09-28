@@ -5,7 +5,7 @@ services:
     build: .
     restart: unless-stopped
     environment:
-      KANBAN_BOARD_PATH: /vault/Hermes Board.md
+      KANBAN_BOARD_PATH: /board/Hermes Board.md
       MCP_BEARER_TOKEN: ${MCP_BEARER_TOKEN:?required}
       HOST: 0.0.0.0
       PORT: 8787
@@ -16,7 +16,7 @@ services:
       OAUTH_STATE_DIR: /oauth-state
       OAUTH_ALLOWED_REDIRECT_HOSTS: ${OAUTH_ALLOWED_REDIRECT_HOSTS:-chatgpt.com}
     volumes:
-      - ${OBSIDIAN_VAULT_PATH:?required}:/vault
+      - ${KANBAN_BOARD_DIR:?required}:/board
       - ${KANBAN_RUNTIME_PATH:?required}/oauth:/oauth-state
       - ${KANBAN_RUNTIME_PATH:?required}/oauth-owner-token:/run/secrets/oauth-owner-token:ro
     ports:
@@ -30,12 +30,15 @@ services:
     restart: unless-stopped
     command: [node, dist/src/rest-facade.js]
     environment:
-      KANBAN_BOARD_PATH: /vault/Hermes Board.md
+      KANBAN_BOARD_PATH: /board/Hermes Board.md
+      OBSIDIAN_VAULT_PATH: /vault
+      OBSIDIAN_ATTACHMENTS_FOLDER: ${OBSIDIAN_ATTACHMENTS_FOLDER:-Attachments}
       REST_BEARER_TOKEN: ${REST_BEARER_TOKEN:?required}
       OPENAPI_SPEC_PATH: /app/openapi.yaml
       HOST: 0.0.0.0
       PORT: 8788
     volumes:
+      - ${KANBAN_BOARD_DIR:?required}:/board
       - ${OBSIDIAN_VAULT_PATH:?required}:/vault
       - ${KANBAN_RUNTIME_PATH:?required}/openapi.yaml:/app/openapi.yaml:ro
     ports:

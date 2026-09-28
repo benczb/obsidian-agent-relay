@@ -9,7 +9,7 @@ services:
     command: ["node", "dist/src/rest-facade.js"]
     environment:
       # Must match the MCP service exactly so both edit one board file.
-      KANBAN_BOARD_PATH: /vault/Hermes Board.md
+      KANBAN_BOARD_PATH: /board/Hermes Board.md
       OBSIDIAN_VAULT_PATH: /vault
       OBSIDIAN_ATTACHMENTS_FOLDER: ${OBSIDIAN_ATTACHMENTS_FOLDER:-Attachments}
       REST_BEARER_TOKEN: ${REST_BEARER_TOKEN:?set REST_BEARER_TOKEN in rest-facade/.env}
@@ -17,6 +17,7 @@ services:
       HOST: 0.0.0.0
       PORT: 8788
     volumes:
+      - ${KANBAN_BOARD_DIR:?set KANBAN_BOARD_DIR in rest-facade/.env}:/board
       - ${OBSIDIAN_VAULT_PATH:?set OBSIDIAN_VAULT_PATH in rest-facade/.env}:/vault
       - ./openapi.yaml:/app/openapi.yaml:ro
     ports:

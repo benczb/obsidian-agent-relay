@@ -4,7 +4,7 @@ Meta's Muse agent has no MCP client and no webhook or custom-tool mechanism. Its
 
 Hub picture: local MCP clients can use the private listener; compatible cloud MCP clients use the OAuth listener; REST clients use this facade. Client compatibility and connection status must be verified in each client. All adapters edit one board file.
 
-Both adapters share `src/board.ts`, which serializes every write with a lockfile and an atomic rename. The lock file sits next to the board file inside the vault mount, so the MCP container and this container serialize against each other as long as both mount the same vault path and point at the same `KANBAN_BOARD_PATH`.
+Both adapters share `src/board.ts`, which serializes every write with a lockfile and an atomic rename. The lock file sits next to the board file inside the shared board-directory mount, so the MCP container and this container serialize against each other as long as both mount that directory and point at the same `KANBAN_BOARD_PATH`.
 
 ## Card convention (the messaging protocol)
 
@@ -64,7 +64,10 @@ The facade uses its own token, `REST_BEARER_TOKEN`, separate from the MCP token.
 The root README covers the combined MCP and REST stack. For this facade, from the repo root:
 
 ```bash
-# Create rest-facade/.env privately with OBSIDIAN_VAULT_PATH and REST_BEARER_TOKEN.
+# Copy rest-facade/.env.example to rest-facade/.env, then set the absolute board
+# directory and notes-vault paths and a fresh REST bearer token.
+# Create the board file and notes directory before starting. Ensure container UID 1000
+# can write both. For combined deployment, use the root README instead.
 # Do not put credentials in a synced vault. For combined deployment use ./deploy.sh instead.
 docker compose -f rest-facade/compose.yaml up -d --build
 curl -s http://127.0.0.1:8788/healthz
@@ -131,4 +134,4 @@ curl -fsS "$BASE/v1/vault/note?path=News%2FJev.md" -H "$AUTH"
 curl -fsS "$BASE/v1/vault/search?q=available" -H "$AUTH"
 ```
 
-The compose file mounts `${OBSIDIAN_VAULT_PATH}` at `/vault` and sets the service's `OBSIDIAN_VAULT_PATH=/vault`. `OBSIDIAN_ATTACHMENTS_FOLDER` defaults to `Attachments` and may be changed in `rest-facade/.env` to match Obsidian's attachment setting.
+The compose file mounts `${KANBAN_BOARD_DIR}` at `/board` and `${OBSIDIAN_VAULT_PATH}` at `/vault`, then sets both service paths explicitly. `OBSIDIAN_ATTACHMENTS_FOLDER` defaults to `Attachments` and may be changed in `rest-facade/.env` to match Obsidian's attachment setting.
