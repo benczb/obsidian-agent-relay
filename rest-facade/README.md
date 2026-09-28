@@ -16,7 +16,7 @@ Every card is a message:
 - columns are the protocol: **Inbox** = addressed and waiting, **In Progress** = claimed by the recipient, **Done** = handled (the reply goes in `result`)
 - claiming = `POST /v1/cards/{id}/claim` with `agent`; only one concurrent claim succeeds. Moving a card alone does not acquire a claim.
 
-Use [the handover contract](../docs/handover.md). In a combined deployment, manage both services from the repository root with `../deploy.sh` and an explicit private `KANBAN_ENV_FILE`. The combined Compose file binds REST to loopback on `REST_BIND_PORT` (default 18788); the standalone example below defaults to 8788. Keep the runtime env outside the vault and Git.
+Use [the handover contract](../docs/handover.md). In a combined deployment, manage both services from the repository root with `./deploy.sh` and an explicit private `KANBAN_ENV_FILE`. The combined Compose file binds REST to loopback on `REST_BIND_PORT` (default 18788); the standalone example below defaults to 8788. Keep the runtime env outside the vault and Git.
 
 ## Endpoints
 
@@ -61,16 +61,20 @@ The facade uses its own token, `REST_BEARER_TOKEN`, separate from the MCP token.
 
 ## Deploy on a host
 
-The root README covers the combined MCP and REST stack. For this facade, from the repo root:
+The root README covers the combined MCP and REST stack. For this standalone facade, from the repo root:
 
 ```bash
-# Copy rest-facade/.env.example to rest-facade/.env, then set the absolute board
-# directory and notes-vault paths and a fresh REST bearer token.
-# Create the board file and notes directory before starting. Ensure container UID 1000
-# can write both. For combined deployment, use the root README instead.
-# Do not put credentials in a synced vault. For combined deployment use ./deploy.sh instead.
-docker compose -f rest-facade/compose.yaml up -d --build
-curl -s http://127.0.0.1:8788/healthz
+# First create separate board and notes directories outside this checkout.
+# Copy the sanitized example and edit all paths and the bearer token privately.
+test ! -e rest-facade/.env || { echo "Existing REST env; inspect before deploying" >&2; exit 1; }
+cp rest-facade/.env.example rest-facade/.env
+${EDITOR:-vi} rest-facade/.env
+# The board directory must contain Hermes Board.md (see the root README).
+# Ensure container UID 1000 can write the board directory and notes vault.
+docker compose --env-file rest-facade/.env -f rest-facade/compose.yaml up -d --build
+docker compose --env-file rest-facade/.env -f rest-facade/compose.yaml ps
+curl -fsS http://127.0.0.1:8788/healthz
+# On failure: docker compose --env-file rest-facade/.env -f rest-facade/compose.yaml logs --tail=100
 ```
 
 `rest-facade/obsidian-kanban-rest.service` is an optional systemd **user** unit template (`loginctl enable-linger` may be needed for startup at boot). Update paths for your host.
@@ -90,7 +94,7 @@ Public URL: `https://YOUR-PUBLIC-HOST.example.com:YOUR-REST-HTTPS-PORT`.
 Grounded in Meta's Help Center page "How Muse works with Connectors" (meta.com/help/artificial-intelligence/1687253048996149/):
 
 1. Deploy the facade and note the public URL and token.
-2. Edit `servers:` in `openapi.yaml` to your public URL, rebuild/restart, and confirm `https://YOUR-PUBLIC-HOST.example.com:YOUR-REST-HTTPS-PORT/openapi.yaml` loads in a browser.
+2. Edit `servers:` in `rest-facade/openapi.yaml` to your public URL, rebuild/restart, and confirm `https://YOUR-PUBLIC-HOST.example.com:YOUR-REST-HTTPS-PORT/openapi.yaml` loads in a browser.
 3. In Muse, ask: **"Create a custom connector for my Kanban board API at https://YOUR-PUBLIC-HOST.example.com:YOUR-REST-HTTPS-PORT. The OpenAPI spec is at /openapi.yaml on the same host. Use bearer token auth."** Custom connectors are the per-user path for services not in Meta's connector directory; Muse retrieves the service's API info itself and stores the token in Meta's Secure Credentials Store. They are not Meta-reviewed.
 4. When Muse asks for the credential, paste `REST_BEARER_TOKEN`.
 5. Smoke test in Muse: "List the Inbox cards on my Kanban board", then "Add a card titled 'Test from Muse' addressed to hermes with thread test-1". The card should appear in `Hermes Board.md` and in the Obsidian Kanban view.
@@ -101,7 +105,7 @@ Caveat: Muse connectors launched in September 2026 and Meta has not published an
 
 - Never expose `/v1` without the token, and never commit the token.
 - The facade also exposes vault-wide note, search, and attachment routes below. Its bearer token grants more access than the board-only MCP credential. Use a dedicated vault or avoid exposing REST if that scope is too broad.
-- Anything Muse can do through the connector, a holder of the token can do. Rotate with `openssl rand -hex 32` in `rest-facade/.env` plus a restart.
+- Anything Muse can do through the connector, a holder of the token can do. Rotate with `openssl rand -hex 32` in `rest-facade/.env` plus a restart using the same `--env-file` command.
 - The board file is shared state, not a safe: do not put secrets in card bodies.
 
 ## Sources

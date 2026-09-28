@@ -11,7 +11,7 @@ info:
     result field carries the reply). Use claimCard for an atomic claim, then
     completeCard to record the result. A plain move does not acquire a claim.
 servers:
-  # Replace with the public Tailscale Funnel URL printed by the setup script.
+  # Replace with the separately published REST HTTPS origin from your deployment.
   - url: https://YOUR-GX10-YOUR-TAILNET.ts.net:8443
 paths:
   /healthz:

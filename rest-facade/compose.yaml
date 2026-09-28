@@ -1,6 +1,6 @@
 # REST facade for Meta Muse (custom connector). Separate compose project from
 # the MCP server so `docker compose up` on the MCP stack stays unchanged.
-# Run from the repo root: docker compose -f rest-facade/compose.yaml up -d --build
+# Run from the repo root with --env-file rest-facade/.env (see README).
 services:
   obsidian-kanban-rest:
     build:

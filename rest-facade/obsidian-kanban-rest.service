@@ -6,10 +6,11 @@ After=docker.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-# Adjust if the repo was cloned somewhere other than ~/obsidian-hermes-mcp.
-WorkingDirectory=%h/obsidian-hermes-mcp
-ExecStart=/usr/bin/docker compose -f rest-facade/compose.yaml up -d
-ExecStop=/usr/bin/docker compose -f rest-facade/compose.yaml down
+# Adjust if cloned somewhere other than ~/obsidian-agent-relay.
+# Copy and edit rest-facade/.env before enabling this unit.
+WorkingDirectory=%h/obsidian-agent-relay
+ExecStart=/usr/bin/docker compose --env-file rest-facade/.env -f rest-facade/compose.yaml up -d
+ExecStop=/usr/bin/docker compose --env-file rest-facade/.env -f rest-facade/compose.yaml down
 TimeoutStartSec=0
 
 [Install]
