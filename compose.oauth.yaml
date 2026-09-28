@@ -8,7 +8,7 @@ services:
       OAUTH_STATE_DIR: /oauth-state
       OAUTH_ALLOWED_REDIRECT_HOSTS: ${OAUTH_ALLOWED_REDIRECT_HOSTS:-chatgpt.com}
     volumes:
-      - ${OAUTH_STATE_PATH:-./data/oauth}:/oauth-state
+      - ${OAUTH_STATE_PATH:?set OAUTH_STATE_PATH in .env}:/oauth-state
       - ${OAUTH_OWNER_TOKEN_PATH:?set OAUTH_OWNER_TOKEN_PATH in .env}:/run/secrets/oauth-owner-token:ro
     ports:
       - "127.0.0.1:${OAUTH_BIND_PORT:-8771}:8771"

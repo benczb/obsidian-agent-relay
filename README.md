@@ -55,11 +55,15 @@ mkdir -p "$KANBAN_RUNTIME_PATH/oauth" "$HOME/obsidian-relay-board" "$HOME/obsidi
 # Docker runs as the unprivileged node user (UID 1000). Confirm it can write the
 # board, notes and runtime/oauth directories and read the owner-token file.
 # Adjust ownership on your own host if needed; do not make tokens world-readable.
-if [ ! -e "$HOME/obsidian-relay-board/Hermes Board.md" ]; then
-  printf -- '---\nkanban-plugin: basic\n---\n\n## Inbox\n\n## In Progress\n\n## Done\n' > "$HOME/obsidian-relay-board/Hermes Board.md"
+# This block is for a fresh install. Do not use it to update an existing host.
+# Check all destinations before creating anything, so a rerun cannot overwrite
+# the board or runtime configuration.
+if [ -e "$HOME/obsidian-relay-board/Hermes Board.md" ] || [ -e "$KANBAN_RUNTIME_PATH/deployment.env" ] || [ -e "$KANBAN_RUNTIME_PATH/openapi.yaml" ] || [ -e "$KANBAN_RUNTIME_PATH/oauth-owner-token" ]; then
+  echo "Board or runtime files already exist. Stop and inspect them before deploying." >&2
+  exit 1
 fi
-# This is a fresh-install example only. On an existing board, never overwrite its file.
-cp deployment.env.example "$KANBAN_RUNTIME_PATH/deployment.env"
+printf -- '---\nkanban-plugin: basic\n---\n\n## Inbox\n\n## In Progress\n\n## Done\n' > "$HOME/obsidian-relay-board/Hermes Board.md"
+( umask 077; cp deployment.env.example "$KANBAN_RUNTIME_PATH/deployment.env" )
 # Edit deployment.env: absolute KANBAN_BOARD_DIR (the directory just created),
 # OBSIDIAN_VAULT_PATH (the separate notes directory), KANBAN_RUNTIME_PATH,
 # PUBLIC_BASE_URL (the public HTTPS OAuth origin, including any nonstandard port),
@@ -68,8 +72,7 @@ cp deployment.env.example "$KANBAN_RUNTIME_PATH/deployment.env"
 ${EDITOR:-vi} "$KANBAN_RUNTIME_PATH/deployment.env"
 # Replace MCP_BEARER_TOKEN and REST_BEARER_TOKEN in that file with two
 # different outputs of `openssl rand -hex 32`, before starting the services.
-openssl rand -hex 32 > "$KANBAN_RUNTIME_PATH/oauth-owner-token"
-chmod 600 "$KANBAN_RUNTIME_PATH/oauth-owner-token"
+( umask 077; openssl rand -hex 32 > "$KANBAN_RUNTIME_PATH/oauth-owner-token" )
 cp rest-facade/openapi.yaml "$KANBAN_RUNTIME_PATH/openapi.yaml"
 # Set servers[0].url in that copy to your REST public HTTPS base URL.
 ${EDITOR:-vi} "$KANBAN_RUNTIME_PATH/openapi.yaml"
@@ -81,6 +84,8 @@ curl -fsS http://127.0.0.1:18787/healthz
 curl -fsS http://127.0.0.1:18788/healthz
 # If either fails, inspect: KANBAN_ENV_FILE="$KANBAN_RUNTIME_PATH/deployment.env" ./deploy.sh logs --tail=100 mcp rest
 ```
+
+This is a template; all token and hostname placeholders must be replaced before deploying. Do not copy example env values into a live deployment.
 
 The example uses three distinct absolute paths. Do not point `KANBAN_BOARD_DIR` into the notes vault or at the board file itself. The combined Compose file mounts the entire board directory at `/board` in both services (the board write lock and atomic rename need that directory writable) and mounts the notes directory only in REST at `/vault`. On SELinux hosts or Docker setups that create root-owned bind-mount targets, ensure the board directory and notes vault exist and are writable by container UID 1000 before deploy.
 
@@ -117,6 +122,6 @@ npm run check
 python3 test/adapters-smoke.py
 ```
 
-The smoke test uses a temporary board rather than the live vault. For alternative deployments, `compose.yaml` is private MCP only, `compose.oauth.yaml` adds OAuth, and `rest-facade/compose.yaml` runs REST alone. Match the board and vault paths when combining adapters. For an existing deployment, use its separately kept private operator runbook and verify actual mounts before a restart.
+The smoke test uses a temporary board rather than the live vault. For alternative deployments, `compose.yaml` is private MCP only (set `KANBAN_BOARD_DIR` and `MCP_BEARER_TOKEN` in an explicit `--env-file`); `compose.oauth.yaml` adds OAuth (set `PUBLIC_BASE_URL`, `OAUTH_OWNER_TOKEN_PATH`, and `OAUTH_STATE_PATH`); and `rest-facade/compose.yaml` runs REST alone with `--env-file rest-facade/.env`. Match the board directory and service paths when combining adapters. These alternatives are not the quick start; do not overlay them on a running combined deployment without reviewing the resulting Compose config. For an existing deployment, use its separately kept private operator runbook and verify actual mounts before a restart.
 
 See [contribution guidelines](CONTRIBUTING.md), [community code](CODE_OF_CONDUCT.md), and the [MIT license](LICENSE). For the design history, see [decision log](docs/decision-log.md).

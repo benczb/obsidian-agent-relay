@@ -3,12 +3,12 @@ services:
     build: .
     restart: unless-stopped
     environment:
-      KANBAN_BOARD_PATH: /vault/Hermes Board.md
+      KANBAN_BOARD_PATH: /board/Hermes Board.md
       MCP_BEARER_TOKEN: ${MCP_BEARER_TOKEN:?set MCP_BEARER_TOKEN in .env}
       HOST: 0.0.0.0
       PORT: 8787
     volumes:
-      - ${OBSIDIAN_VAULT_PATH:?set OBSIDIAN_VAULT_PATH in .env}:/vault
+      - ${KANBAN_BOARD_DIR:?set KANBAN_BOARD_DIR in .env}:/board
     ports:
       - "127.0.0.1:${MCP_BIND_PORT:-8787}:8787"
     read_only: true
