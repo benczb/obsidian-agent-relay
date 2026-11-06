@@ -49,3 +49,26 @@ Decision: add sanitized, tracked deployment templates and correct the combined a
 Prompt (verbatim): "Audit the repo for usability, missing files and make sure it works."
 
 Decision: rechecked every copied file and relative Markdown link in a fresh checkout, the combined and alternative Compose manifests, and the documented local build/smoke commands. The standalone REST guide previously left out the env-file flag, linked to `../deploy.sh` from an instruction that said to run at the root, and named `openapi.yaml` without its `rest-facade/` prefix. Its systemd template still named an old checkout directory and omitted the env file. These are corrected. The standalone MCP example now mounts the board directory rather than treating the notes vault as the board. The OAuth overlay requires an explicit state path rather than silently creating one under the checkout. An obsolete comment claimed an absent setup script prints the REST URL; it is removed. The combined quick start now stops if board or runtime files already exist, instead of risking a rerun that overwrites them. No live host was changed. The audit used scratch configuration and real Node REST/MCP health and round-trip tests; Docker/Compose is unavailable here, so container startup cannot yet be claimed as tested.
+
+## 2026-11-06: Guarded revisit edit candidate, not enabled
+
+Scope: build/test only. No host installation or live list mutation. Actual Base
+sorting and row inventory remain unverified. See scoped-revisit-edit.md for the
+operator gate, external-writer limitation and tests.
+
+User prompts, scoped to this change and kept in order:
+
+1. "add to obsidian at the top of revisit list - hermes and chatgpt plugin and build lucaOSS"
+   Investigated the original request; no live insertion in this commit.
+2. "edit to the top"
+   Implemented an insertion primitive, not an append or general overwrite.
+3. "ok"
+   Approved investigation only; no enablement inferred.
+4. "investigate"
+   Reviewed current REST/vault capability and deployment boundary.
+5. "Are you able to add to top revisit list"
+   Reported not yet. Markdown insertion does not prove Base sorting.
+6. "Ok"
+   Approved build/test in this repository, explicitly separate from server setup.
+   Candidate defaults disabled; TypeScript build and all 33 tests pass, including
+   six new cases. Actual Base-order fixture/test remains blocked on source access.

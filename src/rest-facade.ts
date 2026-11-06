@@ -1,3 +1,4 @@
+import { ScopedEditor, type ScopedEditPolicy } from "./scoped-edit.js";
 import { timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
@@ -49,10 +50,11 @@ function sendBoardError(res: express.Response, e: unknown): void {
   else res.status(400).json({ error: "bad_request", detail: message });
 }
 
-export async function createRestApp(config: { boardPath: string; token: string; vaultPath: string; specPath?: string; attachmentFolder?: string }): Promise<express.Express> {
+export async function createRestApp(config: { boardPath: string; token: string; vaultPath: string; specPath?: string; attachmentFolder?: string; scopedEdit?: ScopedEditPolicy }): Promise<express.Express> {
   if (!config.token || config.token.length < 32) throw new Error("REST_BEARER_TOKEN is required and must be at least 32 characters");
   const board = new KanbanBoard(config.boardPath);
   const vault = await VaultStore.open(config.vaultPath, config.attachmentFolder);
+  const scoped = config.scopedEdit ? new ScopedEditor(config.vaultPath, config.scopedEdit) : undefined;
   const app = express();
   app.disable("x-powered-by");
 
@@ -104,7 +106,25 @@ export async function createRestApp(config: { boardPath: string; token: string; 
   app.post("/v1/vault/note/append", async (req, res) => {
     const parsed = createNoteSchema.safeParse(req.body ?? {});
     if (!parsed.success) return void res.status(400).json({ error: "invalid_request", detail: parsed.error.message });
-    try { res.json({ path: await vault.appendNote(parsed.data.path, parsed.data.markdown) }); }
+    try {
+      const append = () => vault.appendNote(parsed.data.path, parsed.data.markdown);
+      const result = scoped && parsed.data.path.replaceAll("\\", "/") === scoped.policy.notePath ? await scoped.withNoteLock(append) : await append();
+      res.json({ path: result });
+    }
+    catch (e) { sendVaultError(res, e); }
+  });
+  // Disabled unless an operator configures the exact approved note/Base pair.
+  // This only edits the markdown page. It does NOT claim the Base view is sorted.
+  app.get("/v1/vault/scoped-revisit", async (_req, res) => {
+    if (!scoped) return void res.status(404).json({ error: "not_enabled" });
+    try { res.json(await scoped.inspect()); } catch (e) { sendVaultError(res, e); }
+  });
+  const prependSchema = z.object({ expectedSha256: z.string().regex(/^[a-f0-9]{64}$/), expectedBaseSha256: z.string().regex(/^[a-f0-9]{64}$/), item: z.string().min(1).max(1000) }).strict();
+  app.post("/v1/vault/scoped-revisit/prepend", async (req, res) => {
+    if (!scoped) return void res.status(404).json({ error: "not_enabled" });
+    const parsed = prependSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return void res.status(400).json({ error: "invalid_request" });
+    try { res.json({ ...await scoped.prepend(parsed.data), baseOrderVerified: false }); }
     catch (e) { sendVaultError(res, e); }
   });
   app.post("/v1/vault/attachments", async (req, res) => {
